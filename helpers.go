@@ -5,13 +5,31 @@ import (
 	"encoding/json"
 	"fmt"
 	"io/ioutil"
+	"log"
 	"os"
 	"path/filepath"
 	"reflect"
 	"strings"
 
+	"github.com/fsnotify/fsnotify"
+
 	"gopkg.in/yaml.v2"
 )
+
+type supportedExtension string
+
+const (
+	jsonExtension      supportedExtension = ".json"
+	yamlExtensionLong  supportedExtension = ".yaml"
+	yamlExtensionShort supportedExtension = ".yml"
+)
+
+var triggerReload = func(s *Settings) {
+	s.Data.OnConfigChange(func(in fsnotify.Event) {
+		s.Reload()
+		log.Println("settings.AutoReload", "settings reloaded")
+	})
+}
 
 func (s *Settings) load(settingsFile string) *Settings {
 	if isDirectory(settingsFile) {
@@ -26,10 +44,12 @@ func (s *Settings) load(settingsFile string) *Settings {
 			return &Settings{Error: err}
 		}
 		s.Data.SetConfigType(getExtensionByFileName(settingsFile))
+
 		err = s.Data.MergeConfig(bytes.NewBuffer(b))
 		if err != nil {
 			return &Settings{Error: err}
 		}
+		s.appendFileName(settingsFile)
 	}
 	return s
 }
@@ -95,7 +115,9 @@ func (s *Settings) checkIntSlice(key string) error {
 func listFilesUnderDirectory(dir string) (files []string) {
 	_ = filepath.Walk(dir, func(path string, info os.FileInfo, err error) error {
 		if !isDirectory(path) {
-			files = append(files, path)
+			if supportedExtension(filepath.Ext(path)).validateExtension() {
+				files = append(files, path)
+			}
 		}
 		return nil
 	})
@@ -124,6 +146,33 @@ func isDirectory(path string) bool {
 	}
 	mode := fi.Mode()
 	if mode.IsDir() {
+		return true
+	}
+	return false
+}
+
+func (s *Settings) appendFileName(fileName string) {
+	s.fileNames = append(s.fileNames, filepath.Clean(fileName))
+	s.fileNames = makeUniqueSlice(s.fileNames)
+}
+
+func makeUniqueSlice(s []string) []string {
+	unique := make(map[string]bool, len(s))
+	us := make([]string, len(unique))
+	for _, elem := range s {
+		if len(elem) != 0 {
+			if !unique[elem] {
+				us = append(us, elem)
+				unique[elem] = true
+			}
+		}
+	}
+	return us
+}
+
+func (e supportedExtension) validateExtension() bool {
+	switch e {
+	case jsonExtension, yamlExtensionLong, yamlExtensionShort:
 		return true
 	}
 	return false

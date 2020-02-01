@@ -1,12 +1,14 @@
 package settings
 
 import (
+	"bufio"
 	"fmt"
 	"io/ioutil"
 	"log"
 	"os"
 	"reflect"
 	"testing"
+	"time"
 
 	"github.com/spf13/viper"
 	"github.com/stretchr/testify/suite"
@@ -18,7 +20,26 @@ type (
 	}
 )
 
-func (u unitHelpersSuite) TestHelpersInit() {
+func (u unitHelpersSuite) TestTriggerReload() {
+	initTestOk()
+
+	sm := New(testYamlFilePAth)
+	sm.Data.SetConfigFile(testYamlFilePAth)
+	sm.Data.WatchConfig()
+
+	saveFileHelper(u, testYamlFilePAth, testYamlContent)
+	triggerReload(sm)
+
+	time.Sleep(10 * time.Millisecond)
+
+	v, err := sm.Get("service.name")
+	u.Equal(nil, err)
+	u.Equal("ExampleService", v)
+
+	resetTest()
+}
+
+func (u unitHelpersSuite) TestLoad() {
 	initTestOk()
 
 	err := os.Chmod(testYamlFilePAth, os.ModeExclusive)
@@ -33,7 +54,7 @@ func (u unitHelpersSuite) TestHelpersInit() {
 	resetTest()
 }
 
-func (u unitHelpersSuite) TestHelpersCheckErrors() {
+func (u unitHelpersSuite) TestCheckErrors() {
 	initTestOk()
 
 	s := Settings{}
@@ -45,7 +66,7 @@ func (u unitHelpersSuite) TestHelpersCheckErrors() {
 	resetTest()
 }
 
-func (u unitHelpersSuite) TestHelpersCheckType() {
+func (u unitHelpersSuite) TestCheckType() {
 	initTestOk()
 
 	s := Settings{}
@@ -57,7 +78,7 @@ func (u unitHelpersSuite) TestHelpersCheckType() {
 	resetTest()
 }
 
-func (u unitHelpersSuite) TestHelpersCheck() {
+func (u unitHelpersSuite) TestCheck() {
 	initTestOk()
 
 	s := Settings{}
@@ -69,7 +90,7 @@ func (u unitHelpersSuite) TestHelpersCheck() {
 	resetTest()
 }
 
-func (u unitHelpersSuite) TestHelpersIsDirectory() {
+func (u unitHelpersSuite) TestIsDirectory() {
 	initTest()
 
 	chk := isDirectory(testFilePAth)
@@ -84,8 +105,44 @@ func (u unitHelpersSuite) TestHelpersIsDirectory() {
 	resetTest()
 }
 
+func (u unitHelpersSuite) TestValidateExtension() {
+	ext := jsonExtension
+	supported := ext.validateExtension()
+	u.Equal(true, supported)
+
+	ext = yamlExtensionLong
+	supported = ext.validateExtension()
+	u.Equal(true, supported)
+
+	ext = yamlExtensionShort
+	supported = ext.validateExtension()
+	u.Equal(true, supported)
+
+	ext = ".ini"
+	supported = ext.validateExtension()
+	u.Equal(false, supported)
+}
+
 func TestHelperUnitSuite(t *testing.T) {
 	suite.Run(t, new(unitHelpersSuite))
+}
+
+func saveFileHelper(u unitHelpersSuite, path, content string) {
+	file, err := os.OpenFile(path, os.O_RDWR|os.O_CREATE|os.O_TRUNC, 0755)
+	u.Equal(nil, err)
+
+	defer func() {
+		_ = file.Close()
+	}()
+
+	// new writer w/ default 4096 buffer size
+	w := bufio.NewWriter(file)
+
+	_, err = w.WriteString(content + "\n")
+	u.Equal(nil, err)
+
+	err = w.Flush()
+	u.Equal(nil, err)
 }
 
 func initTest() {
@@ -206,10 +263,10 @@ environment:
 
 	testYamlContentOther = `
 other:
- content:
-   int: 1
-   string: 'text'
-   bool: true
+  content:
+    int: 1
+    string: 'text'
+    bool: true
 `
 
 	testJSONContent = `
@@ -343,11 +400,11 @@ other:
 
 	testYamlFilePAth = "./settings/test.yaml"
 
-	testJsonlFilePAth = "./settings/test.json"
+	testJsonFilePAth = "./settings/test.json"
 
-	testJsonlFileOtherPAth = "./settings/other.json"
+	testJsonFileOtherPAth = "./settings/other.json"
 
-	testYamllFileOtherPAth = "./settings/other.yaml"
+	testYamlFileOtherPAth = "./settings/other.yaml"
 
 	testDirPath = "./settings"
 )
